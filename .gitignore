@@ -18,3 +18,6 @@ __pycache__/
 # Windows Systemdateien
 Thumbs.db
 desktop.ini
+# Sherlock Output-Dateien
+*.txt
+!requirements.txt
