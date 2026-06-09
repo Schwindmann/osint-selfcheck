@@ -72,7 +72,7 @@ def index():
                 (session_id, username)
             )
 
-        base_url = os.getenv('BASE_URL', 'http://localhost:5000')
+        base_url = os.getenv('BASE_URL','https://web-production-34b5d.up.railway.app')
         mail_errors = []
 
         for email in clean_emails:
