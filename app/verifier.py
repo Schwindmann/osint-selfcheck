@@ -54,12 +54,15 @@ def send_verification_email(to_email, token, base_url):
         )
 
         msg = MIMEText(body, 'plain', 'utf-8')
-        msg['From'] = smtp_user
+        msg['From'] = os.getenv('SMTP_FROM', smtp_user)
         msg['To'] = to_email
         msg['Subject'] = 'Bestatige deine E-Mail - OSINT SelfCheck'
 
-        smtp_port = int(os.getenv('SMTP_PORT', 465))
-        with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+        smtp_port = int(os.getenv('SMTP_PORT', 587))
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
 
