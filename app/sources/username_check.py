@@ -37,7 +37,7 @@ def check_username(username):
         # --timeout 10  = max 10 Sekunden pro Plattform
         process = subprocess.run(
             [
-                sys.executable, '-m', 'sherlock',
+                'sherlock',
                 username,
                 '--print-found',
                 '--no-color',
