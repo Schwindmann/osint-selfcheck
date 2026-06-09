@@ -316,14 +316,11 @@ def scan_status(session_id):
 
     return jsonify({'status': scan_row['status']})
 
-
 @main.route('/report/<session_id>')
 def report(session_id):
     """
     Report anzeigen.
-    Lädt alle Ergebnisse aus der DB und zeigt sie an.
-    Block 3 wertet die Daten aus — hier zeigen wir erstmal
-    die Rohergebnisse strukturiert an.
+    Nutzt jetzt den Processor für Bewertung und Scoring.
     """
     if not is_valid_session_id(session_id):
         return redirect(url_for('main.index'))
@@ -337,11 +334,12 @@ def report(session_id):
     if not scan_row or scan_row['status'] != 'done':
         return render_template(
             'error.html',
-            message='Report nicht gefunden oder Scan noch nicht fertig.'
+            message='Report nicht gefunden oder '
+                    'Scan noch nicht fertig.'
         )
 
-    # Alle Ergebnisse laden
-    results = db.execute(
+    # Rohdaten aus DB laden
+    raw_results = db.execute(
         '''SELECT source, category, target, data
            FROM scan_results
            WHERE session_id = ?
@@ -349,40 +347,16 @@ def report(session_id):
         (session_id,)
     ).fetchall()
 
-    # Ergebnisse nach Kategorie gruppieren
-    leaks = []
-    reputations = []
-    profiles = []
-    domains = []
-
-    for row in results:
-        data = json.loads(row['data'])
-        entry = {
-            'source': row['source'],
-            'category': row['category'],
-            'target': row['target'],
-            'data': data
-        }
-        if row['category'] == 'leak':
-            leaks.append(entry)
-        elif row['category'] == 'reputation':
-            reputations.append(entry)
-        elif row['category'] == 'profile':
-            profiles.append(entry)
-        elif row['category'] == 'domain':
-            domains.append(entry)
+    # Processor — bewertet und strukturiert die Rohdaten
+    from app.pipeline.processor import process_results
+    processed = process_results(raw_results)
 
     return render_template(
         'report.html',
         session_id=session_id,
-        leaks=leaks,
-        reputations=reputations,
-        profiles=profiles,
-        domains=domains,
-        total_findings=(
-            len(leaks) + len(reputations) +
-            len(profiles) + len(domains)
-        )
+        findings=processed['findings'],
+        summary=processed['summary'],
+        todos=processed['todos']
     )
 
 
