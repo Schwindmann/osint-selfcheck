@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Bereit — OSINT SelfCheck{% endblock %}
+
+{% block content %}
+
+<!-- Alle Schritte done bis auf 3 -->
+<nav class="steps" aria-label="Fortschritt">
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Eingabe</span>
+    </div>
+    <div class="step-line done" aria-hidden="true"></div>
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Bestätigt</span>
+    </div>
+    <div class="step-line done" aria-hidden="true"></div>
+    <div class="step active" aria-current="step">
+        <div class="step-circle" aria-hidden="true">3</div>
+        <span class="step-label">Scannen</span>
+    </div>
+</nav>
+
+<h1 class="page-title">Alles bestätigt ✓</h1>
+<p class="page-subtitle">
+    Folgende Daten werden jetzt gescannt:
+</p>
+
+<!-- E-Mails anzeigen -->
+<div class="form-group">
+    <p class="form-label">E-Mail-Adressen</p>
+    <div class="tag-list"
+         aria-label="Zu scannende E-Mail-Adressen">
+        {% for email in emails %}
+        <span class="tag">{{ email }}</span>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Usernames nur zeigen wenn vorhanden -->
+{% if usernames %}
+<div class="form-group">
+    <p class="form-label">Usernames</p>
+    <div class="tag-list"
+         aria-label="Zu scannende Usernames">
+        {% for username in usernames %}
+        <span class="tag">{{ username }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<hr class="divider" aria-hidden="true">
+
+<!-- Scan starten — /scan Route kommt in Block 2 -->
+<a href="/scan/{{ session_id }}"
+   class="btn-primary"
+   role="button"
+   aria-label="Scan jetzt starten">
+    <span>Scan starten</span>
+    <span aria-hidden="true">→</span>
+</a>
+
+<p class="form-hint"
+   style="text-align:center; margin-top:12px;">
+    Der Scan dauert etwa 20–40 Sekunden.
+</p>
+
+{% endblock %}

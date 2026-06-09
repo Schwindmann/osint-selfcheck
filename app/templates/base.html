@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>
+        {% block title %}OSINT SelfCheck{% endblock %}
+    </title>
+
+    <!-- Zentrales Stylesheet -->
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <!-- Emoji als Favicon — kein extra Bild nötig -->
+    <link rel="icon" type="image/svg+xml"
+          href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
+</head>
+<body>
+
+    <!--
+        Screenreader-Ankündiger.
+        Visuell unsichtbar — nur für Screenreader.
+        JavaScript schreibt hier Statusmeldungen rein.
+        aria-live="polite" = Screenreader wartet bis fertig
+    -->
+    <div id="sr-announcer"
+         role="status"
+         aria-live="polite"
+         aria-atomic="true"
+         class="sr-only">
+    </div>
+
+    <!-- Hauptinhalt -->
+    <main id="main-content" class="container">
+
+        <!--
+            Flash-Nachrichten.
+            Einmalige Status-Meldungen die Flask verschickt.
+            Verschwinden nach einem Seitenaufruf automatisch.
+        -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}"
+                     role="alert"
+                     aria-live="assertive">
+                    <span aria-hidden="true">
+                        {% if category == 'error' %}⚠️
+                        {% elif category == 'warning' %}⚡
+                        {% else %}✓{% endif %}
+                    </span>
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Seiteninhalt — jedes Template füllt diesen Block -->
+        {% block content %}{% endblock %}
+
+    </main>
+
+    <!-- Zentrales JavaScript -->
+    <script src="{{ url_for('static', filename='js/form.js') }}">
+    </script>
+
+    <!-- Optionaler Block für seitenspezifisches JS -->
+    {% block scripts %}{% endblock %}
+
+</body>
+</html>

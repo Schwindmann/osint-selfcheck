@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}OSINT SelfCheck — Prüfe deinen digitalen Fußabdruck{% endblock %}
+
+{% block content %}
+
+<!-- Schritt-Anzeige -->
+<nav class="steps" aria-label="Fortschritt">
+    <div class="step active" aria-current="step">
+        <div class="step-circle" aria-hidden="true">1</div>
+        <span class="step-label">Eingabe</span>
+    </div>
+    <div class="step-line" aria-hidden="true"></div>
+    <div class="step">
+        <div class="step-circle" aria-hidden="true">2</div>
+        <span class="step-label">Bestätigen</span>
+    </div>
+    <div class="step-line" aria-hidden="true"></div>
+    <div class="step">
+        <div class="step-circle" aria-hidden="true">3</div>
+        <span class="step-label">Scannen</span>
+    </div>
+</nav>
+
+<!-- Überschrift -->
+<h1 class="page-title">
+    Prüfe deinen<br>digitalen Fußabdruck
+</h1>
+<p class="page-subtitle">
+    Gib deine eigenen Daten ein.
+    Jede E-Mail wird separat bestätigt.
+</p>
+
+<!-- Fehlermeldung -->
+{% if error %}
+<div class="alert alert-error"
+     role="alert"
+     aria-live="assertive">
+    <span aria-hidden="true">⚠️</span>
+    {{ error }}
+</div>
+{% endif %}
+
+<!-- Formular -->
+<form id="scan-form" method="POST" novalidate>
+
+    <!-- CSRF-Token — unsichtbares Sicherheitsfeld -->
+    <!-- Flask-WTF prüft ob es stimmt, sonst: 400 Fehler -->
+    <input type="hidden"
+           name="csrf_token"
+           value="{{ csrf_token() }}">
+
+    <!-- E-Mails -->
+    <div class="form-group">
+        <div role="group" aria-labelledby="emails-label">
+
+            <p class="form-label" id="emails-label">
+                Deine E-Mail-Adressen
+                <span style="color:#555; font-weight:normal;">
+                    (max. 5)
+                </span>
+            </p>
+
+            <div id="email-container">
+                <div class="input-row">
+                    <label for="email-0" class="sr-only">
+                        E-Mail-Adresse 1
+                    </label>
+                    <input
+                        type="email"
+                        id="email-0"
+                        name="emails[]"
+                        placeholder="deine@email.de"
+                        class="input"
+                        value="{{ prev_emails[0] if prev_emails else '' }}"
+                        aria-required="true"
+                        aria-describedby="email-hint"
+                        autocomplete="email"
+                        required
+                    >
+                    <button
+                        type="button"
+                        class="btn-add"
+                        onclick="addEmail()"
+                        aria-label="Weitere E-Mail hinzufügen"
+                        title="Weitere E-Mail hinzufügen"
+                    >+</button>
+                </div>
+
+                <!-- Vorherige Eingaben wiederherstellen bei Fehler -->
+                {% if prev_emails %}
+                    {% for email in prev_emails[1:] %}
+                    <div class="input-row">
+                        <label for="email-{{ loop.index }}"
+                               class="sr-only">
+                            E-Mail-Adresse {{ loop.index + 1 }}
+                        </label>
+                        <input
+                            type="email"
+                            id="email-{{ loop.index }}"
+                            name="emails[]"
+                            placeholder="weitere@email.de"
+                            class="input valid"
+                            value="{{ email }}"
+                            autocomplete="email"
+                        >
+                        <button
+                            type="button"
+                            class="btn-remove"
+                            onclick="removeField(this)"
+                            aria-label="E-Mail {{ loop.index + 1 }} entfernen"
+                        >✕</button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+            </div>
+
+            <p class="form-hint" id="email-hint">
+                Jede Adresse bekommt einen Bestätigungslink.
+            </p>
+
+        </div>
+    </div>
+
+    <hr class="divider" aria-hidden="true">
+
+    <!-- Usernames -->
+    <div class="form-group">
+        <div role="group" aria-labelledby="usernames-label">
+
+            <p class="form-label" id="usernames-label">
+                Deine Usernames
+                <span style="color:#555; font-weight:normal;">
+                    (optional, max. 10)
+                </span>
+            </p>
+
+            <div id="username-container">
+                <div class="input-row">
+                    <label for="username-0" class="sr-only">
+                        Username 1
+                    </label>
+                    <input
+                        type="text"
+                        id="username-0"
+                        name="usernames[]"
+                        placeholder="deinUsername"
+                        class="input"
+                        value="{{ prev_usernames[0] if prev_usernames else '' }}"
+                        aria-describedby="username-hint"
+                        autocomplete="off"
+                        autocorrect="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                    >
+                    <button
+                        type="button"
+                        class="btn-add"
+                        onclick="addUsername()"
+                        aria-label="Weiteren Username hinzufügen"
+                        title="Weiteren Username hinzufügen"
+                    >+</button>
+                </div>
+
+                {% if prev_usernames %}
+                    {% for username in prev_usernames[1:] %}
+                    <div class="input-row">
+                        <label for="username-{{ loop.index }}"
+                               class="sr-only">
+                            Username {{ loop.index + 1 }}
+                        </label>
+                        <input
+                            type="text"
+                            id="username-{{ loop.index }}"
+                            name="usernames[]"
+                            placeholder="weitererUsername"
+                            class="input"
+                            value="{{ username }}"
+                            autocomplete="off"
+                        >
+                        <button
+                            type="button"
+                            class="btn-remove"
+                            onclick="removeField(this)"
+                            aria-label="Username {{ loop.index + 1 }} entfernen"
+                        >✕</button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+
+            </div>
+
+            <p class="form-hint" id="username-hint">
+                Füge alle Usernames hinzu die du im Netz nutzt.
+            </p>
+
+        </div>
+    </div>
+
+    <!-- Absenden -->
+    <button
+        type="submit"
+        id="submit-btn"
+        class="btn-primary"
+        aria-label="Scan starten"
+    >
+        <span>Scan starten</span>
+        <span aria-hidden="true">→</span>
+    </button>
+
+    <p class="form-hint" style="text-align:center; margin-top:12px;">
+        Deine Daten werden 1 Stunde nach dem Scan
+        automatisch gelöscht.
+    </p>
+
+</form>
+
+{% endblock %}

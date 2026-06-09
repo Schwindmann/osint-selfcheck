@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Fehler — OSINT SelfCheck{% endblock %}
+
+{% block content %}
+
+<h1 class="page-title" style="color:#ff6666;">
+    Etwas ist schiefgelaufen
+</h1>
+
+<div class="alert alert-error"
+     role="alert">
+    <span aria-hidden="true">⚠️</span>
+    {{ message }}
+</div>
+
+<a href="/" class="btn-secondary">
+    <span aria-hidden="true">←</span>
+    Zurück zur Startseite
+</a>
+
+{% endblock %}

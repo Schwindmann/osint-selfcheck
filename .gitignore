@@ -1,0 +1,20 @@
+# Virtuelle Umgebung (riesig, gehört nicht ins Repo)
+venv/
+
+# Geheime Konfiguration (API-Keys, Passwörter)
+.env
+
+# Datenbank (enthält echte User-Daten)
+*.db
+
+# Python Cache (automatisch generiert, nicht nötig)
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code Einstellungen
+.vscode/
+
+# Windows Systemdateien
+Thumbs.db
+desktop.ini

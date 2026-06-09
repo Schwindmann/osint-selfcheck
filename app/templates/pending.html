@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Bestätigung ausstehend — OSINT SelfCheck{% endblock %}
+
+{% block content %}
+
+<!-- Schritt 1 done, Schritt 2 aktiv -->
+<nav class="steps" aria-label="Fortschritt">
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Eingabe</span>
+    </div>
+    <div class="step-line done" aria-hidden="true"></div>
+    <div class="step active" aria-current="step">
+        <div class="step-circle" aria-hidden="true">2</div>
+        <span class="step-label">Bestätigen</span>
+    </div>
+    <div class="step-line" aria-hidden="true"></div>
+    <div class="step">
+        <div class="step-circle" aria-hidden="true">3</div>
+        <span class="step-label">Scannen</span>
+    </div>
+</nav>
+
+<h1 class="page-title">Bestätigung ausstehend</h1>
+<p class="page-subtitle">
+    Klicke auf den Link in jeder E-Mail
+    die du eingegeben hast.
+</p>
+
+<!-- Fortschrittsbalken -->
+<div class="progress-bar-wrap"
+     role="progressbar"
+     aria-label="Bestätigungs-Fortschritt"
+     aria-valuenow="{{ verified }}"
+     aria-valuemin="0"
+     aria-valuemax="{{ total }}">
+    <div class="progress-bar-fill"
+         style="width: {{ (verified / total * 100)|int }}%">
+    </div>
+</div>
+
+<!-- Zähler für Screenreader -->
+<p role="status"
+   aria-live="polite"
+   style="color:#888; margin-bottom:20px;">
+    {{ verified }} von {{ total }} E-Mail(s) bestätigt
+</p>
+
+<!-- E-Mail Status Karten -->
+<div aria-label="Status deiner E-Mail-Adressen">
+    {% for email in emails %}
+    <div class="email-card {% if email.verified %}verified{% endif %}">
+
+        <span class="email-address">{{ email.email }}</span>
+
+        <span class="status-badge
+              {% if email.verified %}ok{% else %}pending{% endif %}"
+              aria-label="{{ email.email }}:
+              {% if email.verified %}bestätigt
+              {% else %}ausstehend{% endif %}">
+            {% if email.verified %}
+                <span aria-hidden="true">✓</span>
+                Bestätigt
+            {% else %}
+                <span aria-hidden="true">⏳</span>
+                Link offen
+            {% endif %}
+        </span>
+
+    </div>
+    {% endfor %}
+</div>
+
+<p class="refresh-hint">
+    Seite aktualisiert sich in
+    <span id="refresh-countdown">10</span> Sekunden
+</p>
+
+<a href="/"
+   class="btn-secondary"
+   style="margin-top:24px;">
+    <span aria-hidden="true">←</span>
+    Neu starten
+</a>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- Auto-Refresh alle 10 Sekunden -->
+<meta http-equiv="refresh" content="10">
+{% endblock %}
