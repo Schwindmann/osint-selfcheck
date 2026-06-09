@@ -1,29 +1,17 @@
 import secrets
 import os
-import smtplib
-from email.mime.text import MIMEText
 
 
 def generate_token():
-    """
-    Kryptografisch sicheren Token generieren.
-    secrets ist sicherer als random.
-    Beispiel: 'xK9mP2nR8vL4qW7tY3uZ5aB1'
-    """
+    """Sicheren Token generieren."""
     return secrets.token_urlsafe(32)
 
 
 def send_verification_email(to_email, token, base_url):
     """
-    Bestätigungslink senden.
-
-    Entwicklungsmodus (SMTP leer):
-    → Link erscheint nur im Terminal
-
-    Produktionsmodus (SMTP konfiguriert):
-    → Echte Mail wird versendet
+    Bestätigungslink senden via SendGrid HTTP API.
+    Nutzt Port 443 (HTTPS) statt SMTP Port 587.
     """
-    # Vollständigen Link zusammenbauen
     verify_url = base_url + "/verify/" + token
 
     # Immer ins Terminal ausgeben
@@ -33,40 +21,36 @@ def send_verification_email(to_email, token, base_url):
     print("  -> " + verify_url)
     print("=" * 55 + "\n")
 
-    # SMTP aus .env lesen
-    smtp_host = os.getenv('SMTP_HOST', '').strip()
-    smtp_user = os.getenv('SMTP_USER', '').strip()
-    smtp_pass = os.getenv('SMTP_PASS', '').strip()
+    api_key = os.getenv('SMTP_PASS', '').strip()
+    from_email = os.getenv('SMTP_FROM', '').strip()
 
-    # Wenn SMTP nicht konfiguriert: nur Terminal
-    if not (smtp_host and smtp_user and smtp_pass):
+    if not api_key or not from_email:
+        print("SendGrid nicht konfiguriert — nur Terminal")
         return True
 
-    # Plain-Text Mail senden
     try:
-        body = (
-            "Hallo,\n\n"
-            "bitte bestatige deine E-Mail-Adresse:\n\n"
-            + verify_url + "\n\n"
-            "Dieser Link ist 24 Stunden gueltig.\n"
-            "Wenn du keinen Scan angefordert hast, "
-            "ignoriere diese Mail.\n"
+        import sendgrid
+        from sendgrid.helpers.mail import Mail
+
+        sg = sendgrid.SendGridAPIClient(api_key=api_key)
+
+        message = Mail(
+            from_email=from_email,
+            to_emails=to_email,
+            subject='Bestätige deine E-Mail — OSINT SelfCheck',
+            plain_text_content=(
+                "Hallo,\n\n"
+                "bitte bestätige deine E-Mail-Adresse:\n\n"
+                + verify_url + "\n\n"
+                "Dieser Link ist 24 Stunden gültig.\n"
+                "Wenn du keinen Scan angefordert hast, "
+                "ignoriere diese Mail.\n"
+            )
         )
 
-        msg = MIMEText(body, 'plain', 'utf-8')
-        msg['From'] = os.getenv('SMTP_FROM', smtp_user)
-        msg['To'] = to_email
-        msg['Subject'] = 'Bestatige deine E-Mail - OSINT SelfCheck'
-
-        smtp_port = int(os.getenv('SMTP_PORT', 587))
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-
-        print("Mail gesendet an " + to_email)
+        response = sg.send(message)
+        print("Mail gesendet an " + to_email +
+              " (Status: " + str(response.status_code) + ")")
         return True
 
     except Exception as e:
