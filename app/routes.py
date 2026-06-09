@@ -5,7 +5,8 @@ from flask import (
     redirect,
     url_for,
     session,
-    flash
+    flash,
+    jsonify
 )
 import secrets
 import os
@@ -15,8 +16,7 @@ from app.models import get_db
 from app.validators import validate_form_input
 from app.verifier import generate_token, send_verification_email
 from app import limiter
-
-# Blueprint = Gruppe zusammengehöriger Routen
+import json
 main = Blueprint('main', __name__)
 
 
@@ -24,7 +24,6 @@ def is_valid_session_id(session_id):
     """
     Session-ID auf gültige Zeichen prüfen.
     Verhindert seltsame Eingaben in der URL.
-    Erlaubt: Buchstaben, Zahlen, Bindestrich, Unterstrich
     """
     return (
         session_id and
@@ -43,21 +42,15 @@ def index():
     """
     if request.method == 'POST':
 
-        # Formulardaten lesen
-        # getlist() holt alle Felder mit demselben Namen
-        # nötig weil wir mehrere emails[] haben
         raw_emails = request.form.getlist('emails[]')
         raw_usernames = request.form.getlist('usernames[]')
 
-        # Validierung — prüft Format, Duplikate, Limits
         ok, clean_emails, clean_usernames, error = validate_form_input(
             raw_emails,
             raw_usernames
         )
 
         if not ok:
-            # Fehler anzeigen + Formular mit alten Werten füllen
-            # damit User nicht alles neu tippen muss
             return render_template(
                 'index.html',
                 error=error,
@@ -65,48 +58,37 @@ def index():
                 prev_usernames=raw_usernames
             )
 
-        # Einzigartige Session-ID für diesen Scan
         session_id = secrets.token_urlsafe(16)
-
         db = get_db()
 
-        # Session in DB speichern
         db.execute(
             'INSERT INTO scan_sessions (session_id, status) VALUES (?, ?)',
             (session_id, 'pending')
-            # ? Platzhalter = Schutz vor SQL Injection
         )
 
-        # Usernames speichern
         for username in clean_usernames:
             db.execute(
                 'INSERT INTO usernames (session_id, username) VALUES (?, ?)',
                 (session_id, username)
             )
 
-        # E-Mails speichern + Bestätigungslinks senden
         base_url = os.getenv('BASE_URL', 'http://localhost:5000')
         mail_errors = []
 
         for email in clean_emails:
             token = generate_token()
-            # Token läuft in 24 Stunden ab
             expires_at = datetime.now() + timedelta(hours=24)
-
             db.execute(
                 '''INSERT INTO emails
                    (session_id, email, token, verified, expires_at)
                    VALUES (?, ?, ?, 0, ?)''',
                 (session_id, email, token, expires_at.isoformat())
             )
-
             sent = send_verification_email(email, token, base_url)
             if not sent:
                 mail_errors.append(email)
 
         db.commit()
-
-        # Session-ID im Browser-Cookie merken
         session['scan_session_id'] = session_id
 
         if mail_errors:
@@ -126,15 +108,11 @@ def index():
 
 @main.route('/pending/<session_id>')
 def pending(session_id):
-    """
-    Zeigt welche E-Mails schon bestätigt wurden.
-    Aktualisiert sich automatisch alle 10 Sekunden.
-    """
+    """Warteseite — zeigt welche E-Mails bestätigt wurden."""
     if not is_valid_session_id(session_id):
         return redirect(url_for('main.index'))
 
     db = get_db()
-
     scan = db.execute(
         'SELECT status FROM scan_sessions WHERE session_id = ?',
         (session_id,)
@@ -146,7 +124,6 @@ def pending(session_id):
             message='Session nicht gefunden oder abgelaufen.'
         )
 
-    # Wenn schon alles bestätigt: direkt weiterleiten
     if scan['status'] == 'ready':
         return redirect(
             url_for('main.ready', session_id=session_id)
@@ -171,20 +148,15 @@ def pending(session_id):
 
 @main.route('/verify/<token>')
 def verify(token):
-    """
-    Wird aufgerufen wenn User auf Bestätigungslink klickt.
-    Token prüfen → E-Mail als bestätigt markieren →
-    schauen ob alle bestätigt sind → weiterleiten.
-    """
-    # Token-Format prüfen
-    if len(token) > 100 or not token.replace('-', '').replace('_', '').isalnum():
+    """Bestätigungslink verarbeiten."""
+    if len(token) > 100 or not token.replace(
+        '-', '').replace('_', '').isalnum():
         return render_template(
             'error.html',
             message='Ungültiger Link.'
         )
 
     db = get_db()
-
     email_row = db.execute(
         'SELECT * FROM emails WHERE token = ?',
         (token,)
@@ -196,7 +168,6 @@ def verify(token):
             message='Ungültiger oder bereits verwendeter Link.'
         )
 
-    # Token abgelaufen?
     expires_at = datetime.fromisoformat(email_row['expires_at'])
     if datetime.now() > expires_at:
         return render_template(
@@ -205,13 +176,11 @@ def verify(token):
                     'Bitte starte einen neuen Scan.'
         )
 
-    # Schon bestätigt? Einfach weiterleiten
     if email_row['verified']:
         return redirect(
             url_for('main.pending', session_id=email_row['session_id'])
         )
 
-    # Als bestätigt markieren
     db.execute(
         'UPDATE emails SET verified = 1 WHERE token = ?',
         (token,)
@@ -219,8 +188,6 @@ def verify(token):
     db.commit()
 
     session_id = email_row['session_id']
-
-    # Prüfen ob ALLE E-Mails bestätigt sind
     alle_emails = db.execute(
         'SELECT verified FROM emails WHERE session_id = ?',
         (session_id,)
@@ -241,15 +208,11 @@ def verify(token):
 
 @main.route('/ready/<session_id>')
 def ready(session_id):
-    """
-    Alle E-Mails bestätigt — Scan kann starten.
-    Zeigt Zusammenfassung der eingegebenen Daten.
-    """
+    """Alle E-Mails bestätigt — Scan kann starten."""
     if not is_valid_session_id(session_id):
         return redirect(url_for('main.index'))
 
     db = get_db()
-
     scan = db.execute(
         'SELECT status FROM scan_sessions WHERE session_id = ?',
         (session_id,)
@@ -273,6 +236,153 @@ def ready(session_id):
         emails=[e['email'] for e in emails],
         usernames=[u['username'] for u in usernames],
         session_id=session_id
+    )
+
+
+@main.route('/scan/<session_id>')
+def scan(session_id):
+    """
+    Scan starten.
+    Lädt die Scanning-Seite und startet den Scan im Hintergrund.
+    """
+    if not is_valid_session_id(session_id):
+        return redirect(url_for('main.index'))
+
+    db = get_db()
+    scan_row = db.execute(
+        'SELECT status FROM scan_sessions WHERE session_id = ?',
+        (session_id,)
+    ).fetchone()
+
+    # Nur starten wenn Status 'ready' ist
+    if not scan_row or scan_row['status'] != 'ready':
+        return redirect(url_for('main.index'))
+
+    # E-Mails und Usernames für den Scan laden
+    emails = db.execute(
+        'SELECT email FROM emails WHERE session_id = ?',
+        (session_id,)
+    ).fetchall()
+
+    usernames = db.execute(
+        'SELECT username FROM usernames WHERE session_id = ?',
+        (session_id,)
+    ).fetchall()
+
+    email_list = [e['email'] for e in emails]
+    username_list = [u['username'] for u in usernames]
+
+    # Scan im Hintergrund starten
+    from app.pipeline.orchestrator import start_scan_thread
+    from flask import current_app
+    start_scan_thread(
+        session_id,
+        email_list,
+        username_list,
+        current_app._get_current_object()
+        # _get_current_object() gibt die echte App-Instanz
+        # nicht den Proxy — wichtig für Threads
+    )
+
+    # Sofort zur Ladeseite weiterleiten
+    return render_template(
+        'scanning.html',
+        session_id=session_id
+    )
+
+
+@main.route('/scan-status/<session_id>')
+def scan_status(session_id):
+    """
+    Gibt den aktuellen Scan-Status als JSON zurück.
+    Wird von der Ladeseite alle 3 Sekunden abgefragt.
+
+    Antwort:
+    { "status": "scanning" }  → noch nicht fertig
+    { "status": "done" }      → fertig, weiterleiten
+    { "status": "error" }     → Fehler aufgetreten
+    """
+    if not is_valid_session_id(session_id):
+        return jsonify({'status': 'error'})
+
+    db = get_db()
+    scan_row = db.execute(
+        'SELECT status FROM scan_sessions WHERE session_id = ?',
+        (session_id,)
+    ).fetchone()
+
+    if not scan_row:
+        return jsonify({'status': 'error'})
+
+    return jsonify({'status': scan_row['status']})
+
+
+@main.route('/report/<session_id>')
+def report(session_id):
+    """
+    Report anzeigen.
+    Lädt alle Ergebnisse aus der DB und zeigt sie an.
+    Block 3 wertet die Daten aus — hier zeigen wir erstmal
+    die Rohergebnisse strukturiert an.
+    """
+    if not is_valid_session_id(session_id):
+        return redirect(url_for('main.index'))
+
+    db = get_db()
+    scan_row = db.execute(
+        'SELECT status FROM scan_sessions WHERE session_id = ?',
+        (session_id,)
+    ).fetchone()
+
+    if not scan_row or scan_row['status'] != 'done':
+        return render_template(
+            'error.html',
+            message='Report nicht gefunden oder Scan noch nicht fertig.'
+        )
+
+    # Alle Ergebnisse laden
+    results = db.execute(
+        '''SELECT source, category, target, data
+           FROM scan_results
+           WHERE session_id = ?
+           ORDER BY source, target''',
+        (session_id,)
+    ).fetchall()
+
+    # Ergebnisse nach Kategorie gruppieren
+    leaks = []
+    reputations = []
+    profiles = []
+    domains = []
+
+    for row in results:
+        data = json.loads(row['data'])
+        entry = {
+            'source': row['source'],
+            'category': row['category'],
+            'target': row['target'],
+            'data': data
+        }
+        if row['category'] == 'leak':
+            leaks.append(entry)
+        elif row['category'] == 'reputation':
+            reputations.append(entry)
+        elif row['category'] == 'profile':
+            profiles.append(entry)
+        elif row['category'] == 'domain':
+            domains.append(entry)
+
+    return render_template(
+        'report.html',
+        session_id=session_id,
+        leaks=leaks,
+        reputations=reputations,
+        profiles=profiles,
+        domains=domains,
+        total_findings=(
+            len(leaks) + len(reputations) +
+            len(profiles) + len(domains)
+        )
     )
 
 

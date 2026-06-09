@@ -6,27 +6,20 @@ from flask import g, current_app
 def get_db():
     """
     Datenbankverbindung für den aktuellen Request holen.
-
     Flask's g-Objekt lebt nur während eines einzelnen
-    HTTP-Requests. So öffnen wir maximal eine Verbindung
-    pro Request statt für jeden Aufruf eine neue.
+    HTTP-Requests.
     """
     if 'db' not in g:
         g.db = sqlite3.connect(
             current_app.config['DATABASE']
         )
-        # row_factory: Ergebnisse als Dictionary
-        # Vorher: row[0], row[1]
-        # Nachher: row['email'], row['token']
+        # Ergebnisse als Dictionary statt Tuple
         g.db.row_factory = sqlite3.Row
     return g.db
 
 
 def close_db(e=None):
-    """
-    Verbindung am Ende jedes Requests schließen.
-    Wird automatisch von Flask aufgerufen.
-    """
+    """Verbindung am Ende jedes Requests schließen."""
     db = g.pop('db', None)
     if db is not None:
         db.close()
@@ -34,21 +27,13 @@ def close_db(e=None):
 
 def init_db(app):
     """
-    Tabellen erstellen falls sie noch nicht existieren.
-    Wird einmal beim App-Start aufgerufen.
-    CREATE TABLE IF NOT EXISTS = sicher, kann mehrfach
-    aufgerufen werden ohne Fehler.
+    Tabellen erstellen falls nicht vorhanden.
+    Wird beim App-Start aufgerufen.
     """
     conn = sqlite3.connect(app.config['DATABASE'])
     cursor = conn.cursor()
 
     # ── Tabelle 1: scan_sessions ───────────────────────────
-    # Eine Session = ein Scan-Vorgang
-    # Status-Werte:
-    # 'pending'  → nicht alle E-Mails bestätigt
-    # 'ready'    → alle bestätigt, Scan kann starten
-    # 'scanning' → Scan läuft gerade
-    # 'done'     → Scan fertig, Report liegt vor
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS scan_sessions (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,10 +44,6 @@ def init_db(app):
     ''')
 
     # ── Tabelle 2: emails ──────────────────────────────────
-    # Eine Session kann mehrere E-Mails haben.
-    # Jede E-Mail bekommt einen eigenen Token.
-    # verified: 0 = nicht bestätigt, 1 = bestätigt
-    # expires_at: Token läuft nach 24 Stunden ab
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS emails (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +57,6 @@ def init_db(app):
     ''')
 
     # ── Tabelle 3: usernames ───────────────────────────────
-    # Usernames brauchen keine Verifikation
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS usernames (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,43 +65,84 @@ def init_db(app):
         )
     ''')
 
+    # ── Tabelle 4: scan_results ────────────────────────────
+    # Hier landen alle Rohdaten von den APIs.
+    # source:   woher kommt der Fund (hibp, emailrep, usw.)
+    # category: was für ein Fund (leak, profile, reputation)
+    # data:     die eigentlichen Daten als JSON-String
+    # target:   für welche E-Mail oder Username gilt das
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS scan_results (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            source     TEXT NOT NULL,
+            category   TEXT NOT NULL,
+            target     TEXT NOT NULL,
+            data       TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
-    # Flask sagen: close_db nach jedem Request aufrufen
     app.teardown_appcontext(close_db)
+
+
+def save_result(session_id, source, category, target, data):
+    """
+    Einen Scan-Treffer in der Datenbank speichern.
+
+    session_id: zu welchem Scan gehört das
+    source:     z.B. 'hibp', 'emailrep', 'sherlock'
+    category:   z.B. 'leak', 'profile', 'reputation'
+    target:     die E-Mail oder der Username
+    data:       JSON-String mit den Rohdaten
+    """
+    db = get_db()
+    db.execute(
+        '''INSERT INTO scan_results
+           (session_id, source, category, target, data)
+           VALUES (?, ?, ?, ?, ?)''',
+        (session_id, source, category, target, data)
+    )
+    db.commit()
+
+
+def get_results(session_id):
+    """
+    Alle Ergebnisse einer Session laden.
+    Gibt eine Liste von Rows zurück.
+    """
+    db = get_db()
+    return db.execute(
+        '''SELECT source, category, target, data, created_at
+           FROM scan_results
+           WHERE session_id = ?
+           ORDER BY created_at ASC''',
+        (session_id,)
+    ).fetchall()
 
 
 def cleanup_expired_sessions(app):
     """
-    Alte Sessions löschen — Zero Retention Prinzip.
-    Alles älter als 1 Stunde wird komplett gelöscht.
-    Wird in Block 4 automatisch per Scheduler aufgerufen.
+    Alte Sessions + alle zugehörigen Daten löschen.
+    Zero Retention: alles älter als 1 Stunde wird gelöscht.
     """
     conn = sqlite3.connect(app.config['DATABASE'])
     cursor = conn.cursor()
 
-    # Sessions löschen die älter als 1 Stunde sind
     cursor.execute('''
         DELETE FROM scan_sessions
         WHERE created_at < datetime('now', '-1 hour')
     ''')
 
-    # Verwaiste E-Mails löschen
-    cursor.execute('''
-        DELETE FROM emails
-        WHERE session_id NOT IN (
-            SELECT session_id FROM scan_sessions
+    # Alle verwaisten Daten mitlöschen
+    for table in ['emails', 'usernames', 'scan_results']:
+        cursor.execute(
+            'DELETE FROM ' + table + ' WHERE session_id NOT IN '
+            '(SELECT session_id FROM scan_sessions)'
         )
-    ''')
-
-    # Verwaiste Usernames löschen
-    cursor.execute('''
-        DELETE FROM usernames
-        WHERE session_id NOT IN (
-            SELECT session_id FROM scan_sessions
-        )
-    ''')
 
     conn.commit()
     conn.close()

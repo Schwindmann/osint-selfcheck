@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Scan läuft — OSINT SelfCheck{% endblock %}
+
+{% block content %}
+
+<!-- Alle Schritte aktiv -->
+<nav class="steps" aria-label="Fortschritt">
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Eingabe</span>
+    </div>
+    <div class="step-line done" aria-hidden="true"></div>
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Bestätigt</span>
+    </div>
+    <div class="step-line done" aria-hidden="true"></div>
+    <div class="step active" aria-current="step">
+        <div class="step-circle" aria-hidden="true">3</div>
+        <span class="step-label">Scannen</span>
+    </div>
+</nav>
+
+<h1 class="page-title">Scan läuft...</h1>
+<p class="page-subtitle">
+    Bitte warte — das dauert etwa 20–60 Sekunden.
+</p>
+
+<!-- Animierter Fortschrittsbalken -->
+<div class="progress-bar-wrap"
+     role="progressbar"
+     aria-label="Scan-Fortschritt"
+     aria-valuenow="0"
+     aria-valuemin="0"
+     aria-valuemax="100">
+    <div class="progress-bar-fill"
+         id="progress-fill"
+         style="width: 0%">
+    </div>
+</div>
+
+<!-- Status-Schritte -->
+<div id="scan-steps"
+     aria-label="Scan-Schritte"
+     style="margin: 24px 0;">
+
+    <div class="scan-step" id="step-hibp">
+        <span class="scan-step-icon" aria-hidden="true">⏳</span>
+        <span>Leak-Datenbanken prüfen</span>
+    </div>
+
+    <div class="scan-step" id="step-emailrep">
+        <span class="scan-step-icon" aria-hidden="true">⏳</span>
+        <span>E-Mail Reputation prüfen</span>
+    </div>
+
+    <div class="scan-step" id="step-sherlock">
+        <span class="scan-step-icon" aria-hidden="true">⏳</span>
+        <span>Profile auf 300+ Plattformen suchen</span>
+    </div>
+
+    <div class="scan-step" id="step-report">
+        <span class="scan-step-icon" aria-hidden="true">⏳</span>
+        <span>Report erstellen</span>
+    </div>
+
+</div>
+
+<!-- Screenreader Status -->
+<p role="status"
+   aria-live="polite"
+   id="scan-status-text"
+   class="sr-only">
+    Scan läuft...
+</p>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/**
+ * Scan-Polling: fragt alle 3 Sekunden ob der Scan fertig ist.
+ * Wenn fertig → automatisch zum Report weiterleiten.
+ */
+
+const SESSION_ID = "{{ session_id }}";
+const STATUS_URL = "/scan-status/" + SESSION_ID;
+const REPORT_URL = "/report/" + SESSION_ID;
+
+// Schritte mit Verzögerung animieren
+// Zeigt dem User dass etwas passiert
+const steps = [
+    { id: 'step-hibp',     delay: 1000  },
+    { id: 'step-emailrep', delay: 5000  },
+    { id: 'step-sherlock', delay: 10000 },
+    { id: 'step-report',   delay: 50000 }
+];
+
+// Fortschrittsbalken langsam füllen
+let progress = 0;
+const progressFill = document.getElementById('progress-fill');
+const progressInterval = setInterval(() => {
+    // Maximal 90% — die letzten 10% kommen wenn fertig
+    if (progress < 90) {
+        progress += 0.5;
+        progressFill.style.width = progress + '%';
+        progressFill.parentElement.setAttribute(
+            'aria-valuenow', Math.round(progress)
+        );
+    }
+}, 500);
+
+// Schritte nacheinander auf "aktiv" setzen
+steps.forEach(step => {
+    setTimeout(() => {
+        const el = document.getElementById(step.id);
+        if (el) {
+            el.querySelector('.scan-step-icon').textContent = '🔍';
+            el.classList.add('active');
+        }
+    }, step.delay);
+});
+
+// Alle 3 Sekunden Status abfragen
+let pollCount = 0;
+const maxPolls = 60; // max 3 Minuten warten
+
+const poll = setInterval(async () => {
+    pollCount++;
+
+    // Zu lange gewartet?
+    if (pollCount > maxPolls) {
+        clearInterval(poll);
+        clearInterval(progressInterval);
+        document.getElementById('scan-status-text').textContent =
+            'Scan dauert länger als erwartet...';
+        return;
+    }
+
+    try {
+        // Status-Endpunkt abfragen
+        const response = await fetch(STATUS_URL);
+        const data = await response.json();
+
+        if (data.status === 'done') {
+            // Scan fertig — alles auf grün setzen
+            clearInterval(poll);
+            clearInterval(progressInterval);
+
+            progressFill.style.width = '100%';
+
+            steps.forEach(step => {
+                const el = document.getElementById(step.id);
+                if (el) {
+                    el.querySelector('.scan-step-icon')
+                        .textContent = '✓';
+                    el.classList.add('done');
+                    el.classList.remove('active');
+                }
+            });
+
+            document.getElementById('scan-status-text')
+                .textContent = 'Scan abgeschlossen. Weiterleitung...';
+
+            // Kurz warten dann weiterleiten
+            setTimeout(() => {
+                window.location.href = REPORT_URL;
+            }, 1000);
+
+        } else if (data.status === 'error') {
+            clearInterval(poll);
+            clearInterval(progressInterval);
+            window.location.href = '/error';
+        }
+
+    } catch (e) {
+        // Netzwerkfehler — einfach weiter probieren
+        console.log('Poll-Fehler:', e);
+    }
+
+}, 3000); // alle 3 Sekunden
+</script>
+
+<!-- CSS für Scan-Schritte -->
+<style>
+.scan-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #666;
+    transition: all 0.3s ease;
+}
+
+.scan-step.active {
+    color: #ffaa44;
+    border-color: #3a2a00;
+    background: #1a1200;
+}
+
+.scan-step.done {
+    color: #00ff88;
+    border-color: #0a3a1a;
+    background: #081a10;
+}
+
+.scan-step-icon {
+    font-size: 16px;
+    min-width: 20px;
+}
+</style>
+{% endblock %}

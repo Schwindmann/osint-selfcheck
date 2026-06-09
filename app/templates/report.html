@@ -1,0 +1,389 @@
+{% extends "base.html" %}
+
+{% block title %}Report — OSINT SelfCheck{% endblock %}
+
+{% block content %}
+
+<!-- Alle Schritte done -->
+<nav class="steps" aria-label="Fortschritt">
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Eingabe</span>
+    </div>
+    <div class="step-line done" aria-hidden="true"></div>
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Bestätigt</span>
+    </div>
+    <div class="step-line done" aria-hidden="true"></div>
+    <div class="step done">
+        <div class="step-circle" aria-hidden="true">✓</div>
+        <span class="step-label">Scannen</span>
+    </div>
+</nav>
+
+<h1 class="page-title">Scan abgeschlossen</h1>
+<p class="page-subtitle">
+    {{ total_findings }} Fund(e) gefunden.
+</p>
+
+<!-- ── Leaks ─────────────────────────────────────────────── -->
+{% if leaks %}
+<div class="result-section">
+    <h2 class="section-title">
+        <span aria-hidden="true">🔴</span>
+        Datenlecks ({{ leaks|length }})
+    </h2>
+
+    {% for entry in leaks %}
+    <div class="result-card leak">
+        <div class="result-header">
+            <span class="result-target">{{ entry.target }}</span>
+            <span class="badge badge-red">Leak</span>
+        </div>
+
+        {% for breach in entry.data %}
+        <div class="breach-item">
+            <div class="breach-name">
+                {{ breach.name }}
+                <span class="breach-date">
+                    {{ breach.date[:4] if breach.date else '' }}
+                </span>
+            </div>
+
+            {% if breach.data_classes %}
+            <div class="breach-tags">
+                {% for dc in breach.data_classes[:5] %}
+                <span class="breach-tag">{{ dc }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+        </div>
+        {% endfor %}
+
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Reputation ─────────────────────────────────────────── -->
+{% if reputations %}
+<div class="result-section">
+    <h2 class="section-title">
+        <span aria-hidden="true">🟡</span>
+        E-Mail Reputation ({{ reputations|length }})
+    </h2>
+
+    {% for entry in reputations %}
+    <div class="result-card">
+        <div class="result-header">
+            <span class="result-target">{{ entry.target }}</span>
+            <span class="badge
+                {% if entry.data.suspicious %}badge-red
+                {% elif entry.data.reputation == 'high' %}badge-green
+                {% else %}badge-yellow{% endif %}">
+                {{ entry.data.reputation | default('unknown') }}
+            </span>
+        </div>
+
+        <div class="rep-grid">
+            <div class="rep-item">
+                <span class="rep-label">Spam</span>
+                <span class="rep-value
+                    {% if entry.data.spam %}bad{% else %}good{% endif %}">
+                    {{ '⚠️ Ja' if entry.data.spam else '✓ Nein' }}
+                </span>
+            </div>
+            <div class="rep-item">
+                <span class="rep-label">Datenleck</span>
+                <span class="rep-value
+                    {% if entry.data.data_breach %}bad{% else %}good{% endif %}">
+                    {{ '⚠️ Ja' if entry.data.data_breach else '✓ Nein' }}
+                </span>
+            </div>
+            <div class="rep-item">
+                <span class="rep-label">Blacklist</span>
+                <span class="rep-value
+                    {% if entry.data.blacklisted %}bad{% else %}good{% endif %}">
+                    {{ '⚠️ Ja' if entry.data.blacklisted else '✓ Nein' }}
+                </span>
+            </div>
+            <div class="rep-item">
+                <span class="rep-label">Verdächtig</span>
+                <span class="rep-value
+                    {% if entry.data.suspicious %}bad{% else %}good{% endif %}">
+                    {{ '⚠️ Ja' if entry.data.suspicious else '✓ Nein' }}
+                </span>
+            </div>
+        </div>
+
+        {% if entry.data.profiles %}
+        <div style="margin-top: 12px;">
+            <span class="rep-label">Bekannte Profile:</span>
+            <div class="tag-list" style="margin-top: 6px;">
+                {% for profile in entry.data.profiles %}
+                <span class="tag">{{ profile }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Profile ────────────────────────────────────────────── -->
+{% if profiles %}
+<div class="result-section">
+    <h2 class="section-title">
+        <span aria-hidden="true">🔵</span>
+        Gefundene Profile ({{ profiles|length }})
+    </h2>
+
+    {% for entry in profiles %}
+    <div class="result-card">
+        <div class="result-header">
+            <span class="result-target">@{{ entry.target }}</span>
+            <span class="badge badge-blue">
+                {{ entry.data|length }} Plattform(en)
+            </span>
+        </div>
+
+        <div class="profile-list">
+            {% for profile in entry.data %}
+            <a href="{{ profile.url }}"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="profile-link"
+               aria-label="{{ profile.platform }} Profil öffnen">
+                <span>{{ profile.platform }}</span>
+                <span aria-hidden="true">↗</span>
+            </a>
+            {% endfor %}
+        </div>
+
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Domains ────────────────────────────────────────────── -->
+{% if domains %}
+<div class="result-section">
+    <h2 class="section-title">
+        <span aria-hidden="true">🌐</span>
+        Domain-Informationen ({{ domains|length }})
+    </h2>
+
+    {% for entry in domains %}
+    <div class="result-card">
+        <div class="result-header">
+            <span class="result-target">{{ entry.target }}</span>
+            <span class="badge badge-gray">WHOIS</span>
+        </div>
+
+        <div class="rep-grid">
+            <div class="rep-item">
+                <span class="rep-label">Registrar</span>
+                <span class="rep-value">
+                    {{ entry.data.registrar | default('Unbekannt') }}
+                </span>
+            </div>
+            <div class="rep-item">
+                <span class="rep-label">Erstellt</span>
+                <span class="rep-value">
+                    {{ entry.data.creation_date[:10]
+                       if entry.data.creation_date else 'Unbekannt' }}
+                </span>
+            </div>
+            <div class="rep-item">
+                <span class="rep-label">Läuft ab</span>
+                <span class="rep-value">
+                    {{ entry.data.expiration_date[:10]
+                       if entry.data.expiration_date else 'Unbekannt' }}
+                </span>
+            </div>
+        </div>
+
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Keine Ergebnisse -->
+{% if total_findings == 0 %}
+<div class="alert alert-success" role="status">
+    <span aria-hidden="true">✓</span>
+    Keine Funde — dein digitaler Fußabdruck ist sauber.
+</div>
+{% endif %}
+
+<hr class="divider" aria-hidden="true">
+
+<a href="/" class="btn-secondary">
+    <span aria-hidden="true">←</span>
+    Neuen Scan starten
+</a>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* ── Report-spezifische Styles ──────────────────────────── */
+.result-section {
+    margin-bottom: 32px;
+}
+
+.section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ccc;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.result-card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 10px;
+}
+
+.result-card.leak {
+    border-color: #3a0a0a;
+    background: #1a0808;
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.result-target {
+    font-size: 14px;
+    color: #ccc;
+    word-break: break-all;
+}
+
+/* Badges */
+.badge {
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.badge-red    { background: #3a0a0a; color: #ff6666; }
+.badge-yellow { background: #2a1a00; color: #ffaa44; }
+.badge-green  { background: #0a2a1a; color: #00ff88; }
+.badge-blue   { background: #0a1a3a; color: #6699ff; }
+.badge-gray   { background: #1a1a1a; color: #888; }
+
+/* Breach Items */
+.breach-item {
+    padding: 10px 0;
+    border-top: 1px solid #2a0a0a;
+}
+
+.breach-name {
+    font-size: 14px;
+    color: #ff9999;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.breach-date {
+    font-size: 12px;
+    color: #666;
+    font-weight: normal;
+}
+
+.breach-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.breach-tag {
+    padding: 2px 8px;
+    background: #2a0a0a;
+    border: 1px solid #3a1a1a;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #ff9999;
+}
+
+/* Reputation Grid */
+.rep-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.rep-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #111;
+    border-radius: 8px;
+}
+
+.rep-label {
+    font-size: 12px;
+    color: #666;
+}
+
+.rep-value {
+    font-size: 13px;
+    color: #ccc;
+}
+
+.rep-value.bad  { color: #ff6666; }
+.rep-value.good { color: #00ff88; }
+
+/* Profile Links */
+.profile-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.profile-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #0a1a3a;
+    border: 1px solid #1a2a5a;
+    border-radius: 8px;
+    color: #6699ff;
+    text-decoration: none;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.profile-link:hover {
+    background: #1a2a5a;
+    border-color: #6699ff;
+}
+
+@media (max-width: 480px) {
+    .rep-grid { grid-template-columns: 1fr; }
+}
+</style>
+{% endblock %}
