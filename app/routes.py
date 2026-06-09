@@ -8,6 +8,7 @@ from flask import (
     flash,
     jsonify
 )
+import threading
 import secrets
 import os
 from datetime import datetime, timedelta
@@ -75,18 +76,25 @@ def index():
         base_url = os.getenv('BASE_URL','https://web-production-34b5d.up.railway.app')
         mail_errors = []
 
+        import threading
+
         for email in clean_emails:
             token = generate_token()
             expires_at = datetime.now() + timedelta(hours=24)
             db.execute(
                 '''INSERT INTO emails
-                   (session_id, email, token, verified, expires_at)
-                   VALUES (?, ?, ?, 0, ?)''',
+                (session_id, email, token, verified, expires_at)
+                VALUES (?, ?, ?, 0, ?)''',
                 (session_id, email, token, expires_at.isoformat())
             )
-            sent = send_verification_email(email, token, base_url)
-            if not sent:
-                mail_errors.append(email)
+            # E-Mail in separatem Thread senden
+            # damit gunicorn nicht blockiert wird
+            t = threading.Thread(
+                target=send_verification_email,
+                args=(email, token, base_url),
+                daemon=True
+            )
+            t.start()
 
         db.commit()
         session['scan_session_id'] = session_id
